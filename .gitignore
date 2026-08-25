@@ -2,4 +2,4 @@
 data/
 *.csv
 *.xlsx
-__pycache__/
+__pycache__/collector.log
