@@ -6,7 +6,7 @@
 Every 15 minutes a scheduled job polls the Deutsche Bahn Timetables API for
 Hamburg Hbf, joins the **planned timetable** against the **live change feed**,
 and upserts one row per train into a growing dataset (`hamburg_delays.csv`).
-A Python pass turns that into delay statistics; a Power BI report visualises it.
+A Python pass turns that into delay statistics.
 
 ## 📈 Results
 ![Average delay by hour at Hamburg Hbf](images/chart_preview.png)
@@ -19,7 +19,6 @@ A Python pass turns that into delay statistics; a Power BI report visualises it.
 * **pandas:** Parses the API's timestamp format, computes delays, de-duplicates.
 * **matplotlib:** Renders the hourly delay chart above.
 * **PowerShell + Task Scheduler:** Runs the collector every 15 min and pushes the CSV.
-* **Power BI:** `hamburg-delays.pbix` — reliability dashboard (build spec in `powerbi/`).
 
 ---
 
@@ -99,10 +98,3 @@ powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1
 ```
 `collect_and_push.ps1` runs the collector, then commits and pushes
 `hamburg_delays.csv` only when it changed. Activity is logged to `collector.log`.
-
----
-
-## 📦 Power BI
-`powerbi/BUILD.md` has the full build recipe — Power Query M for loading
-`hamburg_delays.csv`, the DAX measures (avg delay, on-time %, P90, cancellations),
-and the page layout. Open Power BI Desktop, follow it, save as `hamburg-delays.pbix`.
