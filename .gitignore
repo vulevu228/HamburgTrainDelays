@@ -1,6 +1,6 @@
 .env
 data/
-*.csv
 *.xlsx
+*.legacy_root.csv
 __pycache__/
 collector.log

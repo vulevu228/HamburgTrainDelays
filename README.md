@@ -1,41 +1,108 @@
 # 🚂 DB-Delay-Tracker: Hamburg Hbf Analysis
 
-> **Real-time data pipeline for monitoring and visualizing train reliability at Hamburg Hauptbahnhof.**
+> **Data pipeline for monitoring and visualising train reliability at Hamburg Hauptbahnhof.**
 
 ## 📊 Project Overview
-This project polls the live Deutsche Bahn Timetables API every 15 minutes, logging arrival data for Hamburg Hbf into a growing local dataset. A Python analysis pass turns that raw feed into delay statistics and tracks how conditions shift across the day — while filtering out the API's quirks (see below).
+Every 15 minutes a scheduled job polls the Deutsche Bahn Timetables API for
+Hamburg Hbf, joins the **planned timetable** against the **live change feed**,
+and upserts one row per train into a growing dataset (`hamburg_delays.csv`).
+A Python pass turns that into delay statistics; a Power BI report visualises it.
 
 ## 📈 Results
 ![Average delay by hour at Hamburg Hbf](images/chart_preview.png)
-*Average delay by hour, generated straight from the live dataset by `scripts/analyze_delays.py`.*
+*Average delay by hour, generated straight from the dataset by `scripts/analyze_delays.py`.*
 
 ---
 
 ## 🛠️ The Tech Stack
-* **Python + `requests`:** Polls the DB Timetables API on a schedule and logs raw XML to CSV.
-* **pandas:** Parses the API's timestamp format, computes delays, and filters bad records.
+* **Python + `requests`:** Polls two Timetables API endpoints and merges them.
+* **pandas:** Parses the API's timestamp format, computes delays, de-duplicates.
 * **matplotlib:** Renders the hourly delay chart above.
+* **PowerShell + Task Scheduler:** Runs the collector every 15 min and pushes the CSV.
+* **Power BI:** `hamburg-delays.pbix` — reliability dashboard (build spec in `powerbi/`).
+
+---
+
+## 🗂️ Dataset schema (`hamburg_delays.csv`)
+| column | meaning |
+|---|---|
+| `check_time` | when the poll that produced this row ran |
+| `train_id` | DB stop id (unique per train run — the upsert key) |
+| `category` | ICE / IC / RE / RB / ME … |
+| `line` | line label (RE8, RB81, …) |
+| `train_no` | train number |
+| `planned_arr` | scheduled arrival at Hamburg Hbf |
+| `actual_arr` | current/estimated arrival (equals `planned_arr` when nothing changed) |
+| `delay_min` | `actual_arr − planned_arr` in minutes (blank if planned time unknown) |
+| `cancelled` | 1 if the stop was cancelled |
+| `platform` | arrival platform |
+| `origin` | first station on the train's route |
+| `source` | `live` (current pipeline) or `legacy` (migrated May/Aug capture) |
 
 ---
 
 ## 🔍 Engineering Challenges & Solutions
 
-### 1. The "Zombie Train" Problem (Data Latency)
-* **Challenge:** The API occasionally reports "stale" records — trains from 12+ hours ago that never cleared the system.
-* **Solution:** A **stale-record filter** compares each record's `check_time` against its `planned_arr`; anything more than 12 hours apart is dropped before it can skew the averages.
+### 1. The change feed has no planned times
+* **Challenge:** `/fchg` returns *changes only* — a current arrival estimate
+  (`ct`) but almost never the original planned time (`pt`). On its own ~88% of
+  rows can't produce a delay figure.
+* **Solution:** also pull `/plan/{eva}/{date}/{hour}` for the previous, current
+  and next hour and join on the stop id. A train first seen outside that window
+  with no planned time is back-filled automatically on a later run (the upsert
+  keys on `train_id`).
 
-### 2. Integer-to-Datetime Time Transformation
-* **Challenge:** The API returns timestamps as an integer (`YYMMDDHHMM`). Naive subtraction breaks at hour/day boundaries (e.g. `1459` to `1505` looks like a 46-unit jump instead of 6 minutes), and some records omit `planned_arr` entirely.
-* **Solution:** `pandas.to_datetime(..., format='%y%m%d%H%M', errors='coerce')` parses the field directly into real datetimes (so subtraction just works), and rows that fail to parse — missing planned times — are dropped rather than crashing the pipeline.
+### 2. The "Zombie Train" problem (data latency)
+* **Challenge:** the API occasionally echoes stale records — trains from 12+
+  hours ago that never cleared the system.
+* **Solution:** `analyze_delays.py` compares each record's `check_time` against
+  its `planned_arr` and drops anything more than 12 h apart before averaging.
+
+### 3. Integer-to-datetime transformation
+* **Challenge:** the API returns timestamps as `YYMMDDHHMM` integers; naïve
+  subtraction breaks at hour/day boundaries and some records omit the planned time.
+* **Solution:** `pandas.to_datetime(..., format='%y%m%d%H%M', errors='coerce')`
+  parses into real datetimes; rows that fail to parse are dropped, not crashed on.
+
+### 4. Excel corrupted an earlier capture
+* **Challenge:** an early `hamburg_delays.csv` was round-tripped through Excel,
+  which coerced ~48% of the train ids into floats like `-8.4E+18` and rewrote the
+  dates as `DD/MM/YYYY`.
+* **Solution:** `scripts/clean_merge.py` drops the unrecoverable ids, normalises
+  both timestamp styles, collapses each capture to one row per train, tags it
+  `source=legacy`, and merges it under the live data.
 
 ---
 
 ## ▶️ Usage
+
+### One-off
 ```bash
-# 1. Add DB_CLIENT_ID / DB_API_KEY to a local .env (see .gitignore — never committed)
-# 2. Start the collector (polls every 15 min, appends to hamburg_delays.csv)
+# 1. Put DB_CLIENT_ID / DB_API_KEY in a local .env (git-ignored)
+pip install -r requirements.txt        # requests, pandas, matplotlib, python-dotenv
+
+# 2. Collect once (appends/updates hamburg_delays.csv)
 python scripts/hamburg_collector.py
 
-# 3. Generate/refresh the chart from whatever data has been collected so far
+# 3. Refresh the summary + chart
 python scripts/analyze_delays.py
+
+# 4. (once) migrate the legacy May/August captures into the current schema
+python scripts/clean_merge.py
 ```
+
+### Run it on a schedule (Windows)
+```powershell
+# registers a task that runs collect_and_push.ps1 every 15 min while you're logged in
+powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1
+# remove:  Unregister-ScheduledTask -TaskName "HamburgDelaysCollector"
+```
+`collect_and_push.ps1` runs the collector, then commits and pushes
+`hamburg_delays.csv` only when it changed. Activity is logged to `collector.log`.
+
+---
+
+## 📦 Power BI
+`powerbi/BUILD.md` has the full build recipe — Power Query M for loading
+`hamburg_delays.csv`, the DAX measures (avg delay, on-time %, P90, cancellations),
+and the page layout. Open Power BI Desktop, follow it, save as `hamburg-delays.pbix`.
