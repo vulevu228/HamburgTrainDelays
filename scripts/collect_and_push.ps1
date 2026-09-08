@@ -17,7 +17,7 @@ function Log($msg) {
     $line = "{0}  {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), ($msg -join " ")
     Add-Content -Path $log -Value $line -Encoding utf8
 }
-function Git { (& git @args 2>&1) -join " " }
+function RunGit { (& git.exe @args 2>&1) -join " " }
 
 $out = & $Python (Join-Path $PSScriptRoot "hamburg_collector.py") 2>&1
 if ($LASTEXITCODE -ne 0) {
@@ -26,17 +26,17 @@ if ($LASTEXITCODE -ne 0) {
 }
 Log $out
 
-Git add hamburg_delays.csv | Out-Null
-& git diff --cached --quiet
+RunGit add hamburg_delays.csv | Out-Null
+& git.exe diff --cached --quiet
 if ($LASTEXITCODE -eq 0) {
     Log "no dataset change - nothing to commit"
     exit 0
 }
 
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")
-Git commit -m "data: hamburg delays $stamp" | Out-Null
+RunGit commit -m "data: hamburg delays $stamp" | Out-Null
 
-$push = Git push
+$push = RunGit push
 if ($LASTEXITCODE -ne 0) {
     Log "push FAILED ($push) - commit saved locally, will go out next run"
     exit 1
