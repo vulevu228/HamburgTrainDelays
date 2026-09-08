@@ -1,0 +1,68 @@
+name: Hamburg Delays Collector
+
+# Polls the DB Timetables API on a schedule and commits hamburg_delays.csv.
+# GitHub often delays cron runs under load, so '*/15' really means "roughly
+# every 15-40 min" - fine as a keep-alive feed while the local machine is off.
+# API keys live in repo Settings -> Secrets and variables -> Actions:
+#   DB_CLIENT_ID, DB_API_KEY
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: hamburg-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Collect and push
+        env:
+          DB_CLIENT_ID: ${{ secrets.DB_CLIENT_ID }}
+          DB_API_KEY: ${{ secrets.DB_API_KEY }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # The local Task Scheduler job may push between our collect and our
+          # push. Each attempt restarts from origin/main and re-applies this
+          # poll on top, so a divergent push just means "try once more" - no
+          # merge conflicts are ever possible.
+          for attempt in 1 2 3 4 5; do
+            git fetch --quiet origin main
+            git reset --hard --quiet origin/main
+
+            python scripts/hamburg_collector.py
+
+            if git diff --quiet -- hamburg_delays.csv; then
+              echo "No dataset change - nothing to commit."
+              exit 0
+            fi
+
+            git add hamburg_delays.csv
+            git commit --quiet -m "data: hamburg delays $(date -u '+%Y-%m-%d %H:%M UTC')"
+
+            if git push origin HEAD:main; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "push rejected, re-syncing (attempt $attempt)"
+          done
+          echo "::error::could not push after 5 attempts"
+          exit 1

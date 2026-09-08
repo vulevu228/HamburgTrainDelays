@@ -90,9 +90,19 @@ python scripts/analyze_delays.py
 python scripts/clean_merge.py
 ```
 
-### Run it on a schedule (Windows)
+### Run it on a schedule
+
+Two options — running **both** is fine (each run re-syncs from `origin` before
+pushing, so they can't conflict), but one is usually enough.
+
+**A. GitHub Actions (cloud, works with your machine off)** — `.github/workflows/hamburg_delays.yml`
+Runs `*/15 * * * *` (GitHub throttles cron, so realistically every 15–40 min).
+Needs two repo secrets: **Settings → Secrets and variables → Actions →**
+`DB_CLIENT_ID`, `DB_API_KEY`. Trigger a manual run from the **Actions** tab or
+`gh workflow run "Hamburg Delays Collector"`.
+
+**B. Windows Task Scheduler (local, only while you're logged in)**
 ```powershell
-# registers a task that runs collect_and_push.ps1 every 15 min while you're logged in
 powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1
 # remove:  Unregister-ScheduledTask -TaskName "HamburgDelaysCollector"
 ```

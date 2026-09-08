@@ -36,9 +36,21 @@ if ($LASTEXITCODE -eq 0) {
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")
 RunGit commit -m "data: hamburg delays $stamp" | Out-Null
 
+# The GitHub Actions job may have pushed since our last run. Rebase our
+# data commit on top; --autostash keeps any unrelated local edits safe.
 $push = RunGit push
 if ($LASTEXITCODE -ne 0) {
-    Log "push FAILED ($push) - commit saved locally, will go out next run"
-    exit 1
+    Log "push rejected, rebasing on origin: $push"
+    $rebase = RunGit pull --rebase --autostash origin main
+    if ($LASTEXITCODE -ne 0) {
+        & git.exe rebase --abort 2>&1 | Out-Null
+        Log "rebase failed ($rebase) - commit kept locally, next run retries"
+        exit 1
+    }
+    $push = RunGit push
+    if ($LASTEXITCODE -ne 0) {
+        Log "push still failing ($push) - commit kept locally, next run retries"
+        exit 1
+    }
 }
 Log "committed + pushed: $stamp"
