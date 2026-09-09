@@ -1,0 +1,4 @@
+# Keep the dataset LF everywhere so the Windows Task Scheduler run and the
+# Linux GitHub Actions run produce byte-identical files (no phantom EOL conflicts).
+*.csv text eol=lf
+hamburg_delays.csv text eol=lf

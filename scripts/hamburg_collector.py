@@ -180,7 +180,10 @@ def upsert(rows):
     )
     tmp = CSV_PATH + ".tmp"
     with open(tmp, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore")
+        # Force LF: csv defaults to CRLF, which made the Windows and the
+        # GitHub Actions runs disagree on every line and collide on merge.
+        writer = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore",
+                                lineterminator="\n")
         writer.writeheader()
         writer.writerows(ordered)
     os.replace(tmp, CSV_PATH)

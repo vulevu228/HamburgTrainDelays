@@ -100,7 +100,7 @@ def main():
                     .drop(columns="_rank"))
     merged = merged.sort_values(["check_time", "planned_arr"], na_position="last")
 
-    merged.to_csv(OUT, index=False, columns=FIELDS)
+    merged.to_csv(OUT, index=False, columns=FIELDS, lineterminator="\n")
     span = f"{merged['check_time'].min()} .. {merged['check_time'].max()}"
     print(f"\nwrote {len(merged)} rows -> {OUT}")
     print(f"  span         : {span}")
