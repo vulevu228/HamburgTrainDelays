@@ -2,6 +2,13 @@
     Run the one-shot collector, then commit & push hamburg_delays.csv if it changed.
     Designed to be fired every ~15 min by Windows Task Scheduler
     (see install_task.ps1). All output is appended to collector.log.
+
+    Mirrors .github/workflows/hamburg_delays.yml: reset to origin/main
+    BEFORE collecting, then retry the whole collect+commit+push cycle on a
+    rejected push. hamburg_collector.py's upsert() rewrites the entire CSV
+    (one row per train_id, whole file re-sorted) each run, so rebasing or
+    merging that commit's diff onto a different origin tip collides on
+    almost every line - always re-collect from the latest base instead.
 #>
 param(
     [string]$Python = "python"
@@ -19,38 +26,38 @@ function Log($msg) {
 }
 function RunGit { (& git.exe @args 2>&1) -join " " }
 
-$out = & $Python (Join-Path $PSScriptRoot "hamburg_collector.py") 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Log "collector FAILED: $out"
+$pushed = $false
+for ($attempt = 1; $attempt -le 5; $attempt++) {
+    RunGit fetch --quiet origin main | Out-Null
+    RunGit reset --hard --quiet origin/main | Out-Null
+
+    $out = & $Python (Join-Path $PSScriptRoot "hamburg_collector.py") 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Log "collector FAILED: $out"
+        exit 1
+    }
+    Log $out
+
+    & git.exe diff --quiet -- hamburg_delays.csv
+    if ($LASTEXITCODE -eq 0) {
+        Log "no dataset change - nothing to commit"
+        exit 0
+    }
+
+    RunGit add hamburg_delays.csv | Out-Null
+    $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")
+    RunGit commit --quiet -m "data: hamburg delays $stamp" | Out-Null
+
+    $push = RunGit push origin HEAD:main
+    if ($LASTEXITCODE -eq 0) {
+        Log "committed + pushed: $stamp (attempt $attempt)"
+        $pushed = $true
+        break
+    }
+    Log "push rejected (attempt $attempt), re-syncing: $push"
+}
+
+if (-not $pushed) {
+    Log "could not push after 5 attempts - commit kept locally, next run retries"
     exit 1
 }
-Log $out
-
-RunGit add hamburg_delays.csv | Out-Null
-& git.exe diff --cached --quiet
-if ($LASTEXITCODE -eq 0) {
-    Log "no dataset change - nothing to commit"
-    exit 0
-}
-
-$stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")
-RunGit commit -m "data: hamburg delays $stamp" | Out-Null
-
-# The GitHub Actions job may have pushed since our last run. Rebase our
-# data commit on top; --autostash keeps any unrelated local edits safe.
-$push = RunGit push
-if ($LASTEXITCODE -ne 0) {
-    Log "push rejected, rebasing on origin: $push"
-    $rebase = RunGit pull --rebase --autostash origin main
-    if ($LASTEXITCODE -ne 0) {
-        & git.exe rebase --abort 2>&1 | Out-Null
-        Log "rebase failed ($rebase) - commit kept locally, next run retries"
-        exit 1
-    }
-    $push = RunGit push
-    if ($LASTEXITCODE -ne 0) {
-        Log "push still failing ($push) - commit kept locally, next run retries"
-        exit 1
-    }
-}
-Log "committed + pushed: $stamp"
