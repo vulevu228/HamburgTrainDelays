@@ -20,6 +20,7 @@ feeds on the stop id (`s/@id`, unique per train run) recovers it.
 import csv
 import os
 import sys
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 
@@ -47,10 +48,22 @@ def _die(msg):
     sys.exit(1)
 
 
-def _get(url):
-    r = requests.get(url, headers=HEADERS, timeout=30)
-    if r.status_code == 401:
-        _die("401 Unauthorized - check DB_CLIENT_ID / DB_API_KEY and the API subscription.")
+def _get(url, attempts=3):
+    """GET with retry: the DB API occasionally stalls past the 30 s read timeout."""
+    for attempt in range(1, attempts + 1):
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=30)
+            if r.status_code == 401:
+                _die("401 Unauthorized - check DB_CLIENT_ID / DB_API_KEY and the API subscription.")
+            if r.status_code == 429 or r.status_code >= 500:
+                r.raise_for_status()
+            break
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
+            if attempt == attempts:
+                raise
+            print(f"[collector] {url.rsplit('/', 1)[-1]} attempt {attempt}/{attempts} failed "
+                  f"({type(exc).__name__}), retrying")
+            time.sleep(5 * attempt)
     r.raise_for_status()
     return ET.fromstring(r.content)
 
@@ -73,7 +86,7 @@ def fetch_plan():
         slot = now + timedelta(hours=offset)
         try:
             root = _get(f"{BASE}/plan/{HAMBURG_HBF}/{slot:%y%m%d}/{slot:%H}")
-        except requests.HTTPError as exc:
+        except requests.RequestException as exc:
             print(f"[collector] plan {slot:%y%m%d}/{slot:%H} failed: {exc}")
             continue
         for s in root.findall("s"):
@@ -195,7 +208,12 @@ def main():
         _die("Keys not found. Put DB_CLIENT_ID / DB_API_KEY in .env")
 
     plan = fetch_plan()
-    changes = fetch_changes()
+    try:
+        changes = fetch_changes()
+    except requests.RequestException as exc:
+        # Retries exhausted: skip this poll rather than fail the run; the next one catches up.
+        print(f"[collector] change feed unavailable, skipping this poll: {exc}")
+        return
     rows = build_rows(plan, changes)
     added, updated, total = upsert(rows)
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
