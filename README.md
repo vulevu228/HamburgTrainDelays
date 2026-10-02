@@ -1,4 +1,4 @@
-# 🚂 DB-Delay-Tracker: Hamburg Hbf Analysis
+# 🚂 DB-Delay-Tracker: Hamburg Hbf Analysis (Active data pipeline, report will be delivered in near future.)
 
 > **Data pipeline for monitoring and visualising train reliability at Hamburg Hauptbahnhof.**
 
