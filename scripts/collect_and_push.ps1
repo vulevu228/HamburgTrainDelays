@@ -46,7 +46,9 @@ for ($attempt = 1; $attempt -le 5; $attempt++) {
 
     RunGit add hamburg_delays.csv | Out-Null
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")
-    RunGit commit --quiet -m "data: hamburg delays $stamp" | Out-Null
+    # Commit under a bot identity not linked to any GitHub account, so these
+    # ~96 automated commits/day don't flood the owner's contribution graph.
+    RunGit -c user.name="hamburg-delays-collector" -c user.email="collector@hamburg-delays.local" commit --quiet -m "data: hamburg delays $stamp" | Out-Null
 
     $push = RunGit push origin HEAD:main
     if ($LASTEXITCODE -eq 0) {
