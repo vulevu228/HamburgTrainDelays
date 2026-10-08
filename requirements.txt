@@ -2,3 +2,4 @@ requests>=2.31
 pandas>=2.0
 matplotlib>=3.7
 python-dotenv>=1.0
+tzdata; sys_platform == "win32"

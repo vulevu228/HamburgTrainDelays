@@ -23,6 +23,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
@@ -36,6 +37,15 @@ BASE = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
 HEADERS = {"DB-Client-Id": CLIENT_ID, "DB-Api-Key": API_KEY, "accept": "application/xml"}
 
 CSV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hamburg_delays.csv")
+# Fields only the planned timetable knows. The change feed keeps a train for
+# hours after it has left the +-1 h plan window, so a later poll often sees it
+# *without* these -- they must never be blanked by such a poll.
+PLAN_FIELDS = ("category", "line", "train_no", "planned_arr", "platform", "origin")
+
+# The API's timestamps are German local time. GitHub Actions runs in UTC, so
+# never rely on the machine's clock zone.
+BERLIN = ZoneInfo("Europe/Berlin")
+
 FIELDS = [
     "check_time", "train_id", "category", "line", "train_no",
     "planned_arr", "actual_arr", "delay_min", "cancelled", "platform",
@@ -68,6 +78,11 @@ def _get(url, attempts=3):
     return ET.fromstring(r.content)
 
 
+def _now():
+    """Current Berlin wall-clock time (naive, to match the API's timestamps)."""
+    return datetime.now(BERLIN).replace(tzinfo=None)
+
+
 def _parse_ts(raw):
     """DB timestamp 'YYMMDDHHMM' -> datetime, or None."""
     if not raw:
@@ -81,7 +96,7 @@ def _parse_ts(raw):
 def fetch_plan():
     """Planned timetable for the previous / current / next hour, keyed by stop id."""
     plan = {}
-    now = datetime.now()
+    now = _now()
     for offset in (-1, 0, 1):
         slot = now + timedelta(hours=offset)
         try:
@@ -133,7 +148,7 @@ def build_rows(plan, changes):
     window) are recorded too, but without a planned time until a later run
     catches them inside the window and upserts it.
     """
-    now_iso = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_iso = _now().strftime("%Y-%m-%d %H:%M")
     rows = []
     for stop_id in set(plan) | set(changes):
         base = plan.get(stop_id, {})
@@ -165,27 +180,91 @@ def build_rows(plan, changes):
             "platform": chg.get("platform") or base.get("platform", ""),
             "origin": base.get("origin", ""),
             "source": "live",
+            # True when this poll's change feed reported on the train. Only
+            # then are actual_arr / cancelled authoritative; a plan-only
+            # sighting just means "no change known right now".
+            "_in_changes": stop_id in changes,
         })
     return rows
 
 
+def _filled(rows, field):
+    return sum(1 for r in rows if r.get(field) not in ("", None))
+
+
+def merge_row(old, new):
+    """Fold a new observation into the stored row without losing information.
+
+    * plan fields: a value, once known, is kept unless the new poll has one.
+    * actual_arr / cancelled: updated only from a change-feed sighting, so a
+      delayed train later seen only in the plan isn't reset to "on time".
+    * delay_min: recomputed from the merged times.
+    """
+    merged = dict(old)
+    merged["train_id"] = new["train_id"]
+    merged["check_time"] = new["check_time"]
+    merged["source"] = new["source"]
+    for f in PLAN_FIELDS:
+        if new.get(f):
+            merged[f] = new[f]
+    if new.get("_in_changes"):
+        merged["cancelled"] = new["cancelled"]
+        if new.get("actual_arr"):
+            merged["actual_arr"] = new["actual_arr"]
+    elif not merged.get("actual_arr"):
+        merged["actual_arr"] = new.get("actual_arr", "")
+
+    planned = _parse_iso(merged.get("planned_arr"))
+    actual = _parse_iso(merged.get("actual_arr"))
+    if planned and actual and str(merged.get("cancelled")) != "1":
+        merged["delay_min"] = round((actual - planned).total_seconds() / 60)
+    else:
+        merged["delay_min"] = ""
+    return merged
+
+
+def _parse_iso(raw):
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d %H:%M") if raw else None
+    except ValueError:
+        return None
+
+
 def upsert(rows):
-    """Merge new rows into the CSV, one row per train_id (latest observation wins)."""
+    """Merge new rows into the CSV, one row per train_id (see merge_row)."""
     existing = {}
     if os.path.isfile(CSV_PATH):
         with open(CSV_PATH, newline="", encoding="utf-8") as fh:
-            for row in csv.DictReader(fh):
+            reader = csv.DictReader(fh)
+            for row in reader:
+                if not row.get("train_id"):
+                    continue
                 # tolerate the pre-migration schema by filling gaps
-                existing[row.get("train_id", "")] = {k: row.get(k, "") for k in FIELDS}
+                existing[row["train_id"]] = {k: row.get(k, "") for k in FIELDS}
+        # Unreadable / truncated / conflict-marked file: never replace it.
+        if "train_id" not in (reader.fieldnames or []) or (
+                not existing and os.path.getsize(CSV_PATH) > 1024):
+            _die("hamburg_delays.csv is unreadable or has no rows - refusing to overwrite it.")
+    before = list(existing.values())
 
     added = updated = 0
     for row in rows:
         key = row["train_id"]
         if key in existing:
             updated += 1
+            existing[key] = merge_row(existing[key], row)
         else:
             added += 1
-        existing[key] = row
+            existing[key] = merge_row({k: "" for k in FIELDS}, row)
+
+    # Data-loss guard: a poll may only add information. If the row count or
+    # any field's fill count went down, something is wrong - keep the old file.
+    after = list(existing.values())
+    if len(after) < len(before):
+        _die(f"row count would drop {len(before)} -> {len(after)} - not writing.")
+    for f in PLAN_FIELDS:
+        if _filled(after, f) < _filled(before, f):
+            _die(f"'{f}' would lose values ({_filled(before, f)} -> {_filled(after, f)}) - not writing.")
 
     ordered = sorted(
         existing.values(),
