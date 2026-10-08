@@ -295,7 +295,7 @@ def main():
         return
     rows = build_rows(plan, changes)
     added, updated, total = upsert(rows)
-    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    stamp = _now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{stamp}] plan={len(plan)} changes={len(changes)} -> +{added} new, "
           f"~{updated} updated, {total} rows total")
 
