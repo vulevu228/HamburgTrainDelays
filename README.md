@@ -1,25 +1,43 @@
-# 🚂 DB-Delay-Tracker: Hamburg Hbf Analysis (Active data pipeline, report will be delivered in near future.)
+# 🚂 Hamburg Hbf Train Delays
 
-> **Data pipeline for monitoring and visualising train reliability at Hamburg Hauptbahnhof.**
+> **A self-running data pipeline and Power BI dashboard on train punctuality at Hamburg Hauptbahnhof.**
 
 ## 📊 Project Overview
 Every 15 minutes a scheduled job polls the Deutsche Bahn Timetables API for
 Hamburg Hbf (main hall: long-distance + regional trains) and, since 13 Oct 2026,
-the underground S-Bahn platforms (S1/S3/S5/S7), joins the **planned timetable** against the **live change feed**,
-and upserts one row per train into a growing dataset (`hamburg_delays.csv`).
-A Python pass turns that into delay statistics.
+the underground S-Bahn platforms (S1/S3/S5/S7). It joins the **planned timetable**
+against the **live change feed** and upserts one row per train into a growing
+dataset (`hamburg_delays.csv`), which feeds a four-page Power BI report.
 
-## 📈 Results
-![Average delay by hour at Hamburg Hbf](images/chart_preview.png)
-*Average delay by hour, generated straight from the dataset by `scripts/analyze_delays.py`.*
+## 📈 Dashboard
+Data window: 8 Sep – 12 Oct 2026, 16,799 arrivals (before the S-Bahn was added).
+"On time" follows Deutsche Bahn's own rule: less than 6 minutes late.
+
+![Overview: punctuality per day and delay buckets](images/dashboard-1-overview.png)
+*Overview: 57.9% of arrivals on time, average delay 10.3 min, 7.0% cancelled. Each KPI compares the last 7 days with the 7 before.*
+
+![Regional lines: average delay and cancellations](images/dashboard-2-lines.png)
+*Regional lines: RE80 is the most punctual (1.5 min on average), RB31 the least (9.3 min); RE70 lost 18.3% of its arrivals to cancellations.*
+
+![Train types and start stations](images/dashboard-3-trains.png)
+*Train types and origins: long-distance trains bring the delay with them (FlixTrain 24.7 min, ICE 13.7 min, RB 2.6 min); trains from Stuttgart arrive 25.9 min late on average.*
+
+![Delays by hour and weekday](images/dashboard-4-when.png)
+*When: delays build up from early afternoon until midnight; Friday is the worst day (12.6 min).*
+
+### 🗺️ Roadmap
+* **S-Bahn** – collecting since 13 Oct 2026 (station `Hamburg Hbf (S-Bahn)`, EVA 8098549).
+* **U-Bahn** – access to the HOCHBAHN / hvv GTI interface has been requested.
 
 ---
 
 ## 🛠️ The Tech Stack
 * **Python + `requests`:** Polls two Timetables API endpoints and merges them.
 * **pandas:** Parses the API's timestamp format, computes delays, de-duplicates.
-* **matplotlib:** Renders the hourly delay chart above.
-* **PowerShell + Task Scheduler:** Runs the collector every 15 min and pushes the CSV.
+* **matplotlib:** Quick hourly delay chart from `scripts/analyze_delays.py` (not committed).
+* **GitHub Actions + PowerShell/Task Scheduler:** Run the collector every 15 min and push the CSV.
+* **Power BI (Power Query, DAX):** Four-page report with a date table, 37 measures and
+  "last 7 days vs the 7 before" comparisons on every KPI.
 
 ---
 
@@ -73,6 +91,29 @@ A Python pass turns that into delay statistics.
   both timestamp styles, collapses each capture to one row per train, tags it
   `source=legacy`, and merges it under the live data.
 
+### 5. Merge conflicts on every single line
+* **Challenge:** with the collector running on both Windows (Task Scheduler) and
+  Linux (GitHub Actions), every pull conflicted on every line of the CSV.
+* **Solution:** two causes. Windows wrote CRLF line endings and Linux LF, so
+  `.gitattributes` now forces LF. Rebasing a commit that rewrites the whole file
+  can never apply cleanly, so both runners now reset to `origin/main` *before*
+  collecting and simply retry the full cycle when a push is rejected.
+
+### 6. Silently blanked planned times
+* **Challenge:** the upsert replaced a train's whole row on each poll. Once a
+  train left the ±1 h timetable window, later polls blanked its planned time,
+  and with it the delay: only 24% of rows had one, and September looked four
+  times worse than October.
+* **Solution:** `merge_row()` now never blanks a known value, and a write guard
+  refuses to save if any field would lose values. `scripts/backfill_history.py`
+  replayed all 2,077 committed versions of the CSV to restore the lost fields:
+  delay coverage went from 24% to 81%, and both months now show the same 4-minute median.
+
+### 7. The S-Bahn was invisible
+* **Challenge:** Hamburg Hbf's station id (8002549) never lists S-Bahn trains.
+* **Solution:** the underground S-Bahn platforms are a separate station in the
+  API (8098549). The collector polls both and records which one in `station`.
+
 ---
 
 ## ▶️ Usage
@@ -85,7 +126,7 @@ pip install -r requirements.txt        # requests, pandas, matplotlib, python-do
 # 2. Collect once (appends/updates hamburg_delays.csv)
 python scripts/hamburg_collector.py
 
-# 3. Refresh the summary + chart
+# 3. Quick text summary + matplotlib chart (writes images/chart_preview.png, git-ignored)
 python scripts/analyze_delays.py
 
 # 4. (once) migrate the legacy May/August captures into the current schema
