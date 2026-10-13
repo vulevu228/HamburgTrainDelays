@@ -9,6 +9,11 @@
     (one row per train_id, whole file re-sorted) each run, so rebasing or
     merging that commit's diff onto a different origin tip collides on
     almost every line - always re-collect from the latest base instead.
+
+    The reset happens in a PRIVATE worktree (%LOCALAPPDATA%\HamburgTrainDelays-collector),
+    never in the folder you work in: that folder also holds the Power BI project, and a
+    reset --hard there would silently undo unsaved report edits every 15 minutes.
+    After a push, your folder only fast-forwards (never discards local changes).
 #>
 param(
     [string]$Python = "python"
@@ -16,22 +21,31 @@ param(
 
 # git writes progress to stderr; don't let that abort the script
 $ErrorActionPreference = "Continue"
-$repo = Split-Path -Parent $PSScriptRoot
-Set-Location $repo
+$main = Split-Path -Parent $PSScriptRoot
+$work = Join-Path $env:LOCALAPPDATA "HamburgTrainDelays-collector"
 
-$log = Join-Path $repo "collector.log"
+$log = Join-Path $main "collector.log"
 function Log($msg) {
     $line = "{0}  {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), ($msg -join " ")
     Add-Content -Path $log -Value $line -Encoding utf8
 }
 function RunGit { (& git.exe @args 2>&1) -join " " }
 
+if (-not (Test-Path (Join-Path $work ".git"))) {
+    RunGit -C $main fetch --quiet origin main | Out-Null
+    $out = RunGit -C $main worktree add --detach $work origin/main
+    Log "created collector worktree: $out"
+}
+# hamburg_collector.py loads .env from its own folder tree
+Copy-Item (Join-Path $main ".env") (Join-Path $work ".env") -Force
+Set-Location $work
+
 $pushed = $false
 for ($attempt = 1; $attempt -le 5; $attempt++) {
     RunGit fetch --quiet origin main | Out-Null
     RunGit reset --hard --quiet origin/main | Out-Null
 
-    $out = & $Python (Join-Path $PSScriptRoot "hamburg_collector.py") 2>&1
+    $out = & $Python (Join-Path $work "scripts\hamburg_collector.py") 2>&1
     if ($LASTEXITCODE -ne 0) {
         Log "collector FAILED: $out"
         exit 1
@@ -63,3 +77,8 @@ if (-not $pushed) {
     Log "could not push after 5 attempts - commit kept locally, next run retries"
     exit 1
 }
+
+# Bring the new data into your working folder. --ff-only never overwrites local
+# changes; if the folder has diverged or the CSV was edited, it just logs and waits.
+$ff = RunGit -C $main merge --ff-only --quiet origin/main
+if ($LASTEXITCODE -ne 0) { Log "working folder not fast-forwarded (local changes?): $ff" }
