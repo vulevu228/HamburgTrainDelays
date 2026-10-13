@@ -32,7 +32,13 @@ load_dotenv()
 CLIENT_ID = os.getenv("DB_CLIENT_ID")
 API_KEY = os.getenv("DB_API_KEY")
 
-HAMBURG_HBF = "8002549"
+# Hamburg Hbf has two stations in the API: the main hall (long-distance + regional)
+# and the underground S-Bahn platforms (S1/S3/S5/S7), which the main id never lists.
+STATIONS = {
+    "8002549": "Hamburg Hbf",
+    "8098549": "Hamburg Hbf (S-Bahn)",
+}
+LEGACY_STATION = "Hamburg Hbf"  # every row collected before the S-Bahn was added
 BASE = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
 HEADERS = {"DB-Client-Id": CLIENT_ID, "DB-Api-Key": API_KEY, "accept": "application/xml"}
 
@@ -49,7 +55,7 @@ BERLIN = ZoneInfo("Europe/Berlin")
 FIELDS = [
     "check_time", "train_id", "category", "line", "train_no",
     "planned_arr", "actual_arr", "delay_min", "cancelled", "platform",
-    "origin", "source",
+    "origin", "source", "station",
 ]
 
 
@@ -93,14 +99,14 @@ def _parse_ts(raw):
         return None
 
 
-def fetch_plan():
+def fetch_plan(eva):
     """Planned timetable for the previous / current / next hour, keyed by stop id."""
     plan = {}
     now = _now()
     for offset in (-1, 0, 1):
         slot = now + timedelta(hours=offset)
         try:
-            root = _get(f"{BASE}/plan/{HAMBURG_HBF}/{slot:%y%m%d}/{slot:%H}")
+            root = _get(f"{BASE}/plan/{eva}/{slot:%y%m%d}/{slot:%H}")
         except requests.RequestException as exc:
             print(f"[collector] plan {slot:%y%m%d}/{slot:%H} failed: {exc}")
             continue
@@ -121,9 +127,9 @@ def fetch_plan():
     return plan
 
 
-def fetch_changes():
+def fetch_changes(eva):
     """Live arrival changes, keyed by stop id."""
-    root = _get(f"{BASE}/fchg/{HAMBURG_HBF}")
+    root = _get(f"{BASE}/fchg/{eva}")
     changes = {}
     for s in root.findall("s"):
         ar = s.find("ar")
@@ -139,7 +145,7 @@ def fetch_changes():
     return changes
 
 
-def build_rows(plan, changes):
+def build_rows(plan, changes, station):
     """One row per train seen in either feed.
 
     Every train in the plan window is recorded; if the change feed carries no
@@ -180,6 +186,7 @@ def build_rows(plan, changes):
             "platform": chg.get("platform") or base.get("platform", ""),
             "origin": base.get("origin", ""),
             "source": "live",
+            "station": station,
             # True when this poll's change feed reported on the train. Only
             # then are actual_arr / cancelled authoritative; a plan-only
             # sighting just means "no change known right now".
@@ -204,6 +211,7 @@ def merge_row(old, new):
     merged["train_id"] = new["train_id"]
     merged["check_time"] = new["check_time"]
     merged["source"] = new["source"]
+    merged["station"] = new.get("station") or old.get("station") or LEGACY_STATION
     for f in PLAN_FIELDS:
         if new.get(f):
             merged[f] = new[f]
@@ -241,6 +249,8 @@ def upsert(rows):
                     continue
                 # tolerate the pre-migration schema by filling gaps
                 existing[row["train_id"]] = {k: row.get(k, "") for k in FIELDS}
+                if not existing[row["train_id"]]["station"]:
+                    existing[row["train_id"]]["station"] = LEGACY_STATION
         # Unreadable / truncated / conflict-marked file: never replace it.
         if "train_id" not in (reader.fieldnames or []) or (
                 not existing and os.path.getsize(CSV_PATH) > 1024):
@@ -286,18 +296,23 @@ def main():
     if not (CLIENT_ID and API_KEY):
         _die("Keys not found. Put DB_CLIENT_ID / DB_API_KEY in .env")
 
-    plan = fetch_plan()
-    try:
-        changes = fetch_changes()
-    except requests.RequestException as exc:
-        # Retries exhausted: skip this poll rather than fail the run; the next one catches up.
-        print(f"[collector] change feed unavailable, skipping this poll: {exc}")
+    rows, notes = [], []
+    for eva, station in STATIONS.items():
+        plan = fetch_plan(eva)
+        try:
+            changes = fetch_changes(eva)
+        except requests.RequestException as exc:
+            # Retries exhausted: skip this station for this poll; the next one catches up.
+            print(f"[collector] {station}: change feed unavailable, skipped: {exc}")
+            continue
+        rows += build_rows(plan, changes, station)
+        notes.append(f"{station}: plan={len(plan)} changes={len(changes)}")
+    if not rows:
+        print("[collector] no station answered, skipping this poll")
         return
-    rows = build_rows(plan, changes)
     added, updated, total = upsert(rows)
     stamp = _now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{stamp}] plan={len(plan)} changes={len(changes)} -> +{added} new, "
-          f"~{updated} updated, {total} rows total")
+    print(f"[{stamp}] {' | '.join(notes)} -> +{added} new, ~{updated} updated, {total} rows total")
 
 
 if __name__ == "__main__":

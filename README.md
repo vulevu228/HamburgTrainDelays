@@ -4,7 +4,8 @@
 
 ## 📊 Project Overview
 Every 15 minutes a scheduled job polls the Deutsche Bahn Timetables API for
-Hamburg Hbf, joins the **planned timetable** against the **live change feed**,
+Hamburg Hbf (main hall: long-distance + regional trains) and, since 13 Oct 2026,
+the underground S-Bahn platforms (S1/S3/S5/S7), joins the **planned timetable** against the **live change feed**,
 and upserts one row per train into a growing dataset (`hamburg_delays.csv`).
 A Python pass turns that into delay statistics.
 
@@ -37,6 +38,7 @@ A Python pass turns that into delay statistics.
 | `platform` | arrival platform |
 | `origin` | first station on the train's route |
 | `source` | `live` (current pipeline) or `legacy` (migrated May/Aug capture) |
+| `station` | `Hamburg Hbf` (EVA 8002549) or `Hamburg Hbf (S-Bahn)` (EVA 8098549, from 13 Oct 2026) |
 
 ---
 
