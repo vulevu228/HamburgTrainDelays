@@ -1,0 +1,61 @@
+table Calendar
+	lineageTag: 7370deaa-af60-5aed-9d13-0882ff35fe3d
+
+	column Date
+		dataType: dateTime
+		formatString: dd mmm yyyy
+		lineageTag: 1ee3e68c-a4c5-583d-bcfb-e2385bfc1436
+		summarizeBy: none
+		sourceColumn: Date
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column Weekday
+		dataType: string
+		lineageTag: 44d5410a-342b-5d8e-a484-b00aa08413ba
+		summarizeBy: none
+		sourceColumn: Weekday
+		sortByColumn: 'Weekday No'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Weekday No'
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 51faa0c2-d4ae-58ab-99dc-47c31d18dc64
+		summarizeBy: none
+		sourceColumn: Weekday No
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Week Start'
+		dataType: dateTime
+		formatString: dd mmm yyyy
+		lineageTag: 7560f23c-f0b5-572e-9bf2-129ae2592f71
+		summarizeBy: none
+		sourceColumn: Week Start
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	partition Calendar = m
+		mode: import
+		source =
+				let
+				    // 8 Sep 2026 up to yesterday (same window as Delays)
+				    StartDate = #date(2026, 9, 8),
+				    EndDate = Date.AddDays(Date.From(DateTime.LocalNow()), -1),
+				    Dates = List.Dates(StartDate, Duration.Days(EndDate - StartDate) + 1, #duration(1, 0, 0, 0)),
+				    #"To Table" = Table.FromList(Dates, Splitter.SplitByNothing(), {"Date"}),
+				    #"Changed Type" = Table.TransformColumnTypes(#"To Table", {{"Date", type date}}),
+				    #"Added Weekday" = Table.AddColumn(#"Changed Type", "Weekday", each Date.ToText([Date], "ddd", "en-GB"), type text),
+				    #"Added Weekday No" = Table.AddColumn(#"Added Weekday", "Weekday No", each Date.DayOfWeek([Date], Day.Monday) + 1, Int64.Type),
+				    #"Added Week Start" = Table.AddColumn(#"Added Weekday No", "Week Start", each Date.StartOfWeek([Date], Day.Monday), type date)
+				in
+				    #"Added Week Start"
+
+	annotation PBI_ResultType = Table

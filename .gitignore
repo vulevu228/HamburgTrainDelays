@@ -5,3 +5,7 @@ data/
 __pycache__/
 collector.log
 images/chart_preview.png
+# --- Power BI project (.pbip) local files: data cache + per-user settings ---
+**/.pbi/cache.abf
+**/.pbi/localSettings.json
+**/.pbi/editorSettings.json

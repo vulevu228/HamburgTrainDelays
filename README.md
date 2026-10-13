@@ -118,6 +118,11 @@ Data window: 8 Sep – 12 Oct 2026, 16,799 arrivals (before the S-Bahn was added
 
 ## ▶️ Usage
 
+### Power BI report
+Open `powerbi/hamburg_delays.pbip` in Power BI Desktop and press **Refresh**. The query reads
+`hamburg_delays.csv` from `C:\Users\emira\Projects\GitHub-Projects\HamburgTrainDelays\`; if your clone
+lives elsewhere, change the path in Power Query (Transform data → Delays → Source).
+
 ### One-off
 ```bash
 # 1. Put DB_CLIENT_ID / DB_API_KEY in a local .env (git-ignored)

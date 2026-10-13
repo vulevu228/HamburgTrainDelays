@@ -1,0 +1,199 @@
+table Delays
+	lineageTag: c2280852-c504-5a3e-b937-093a0c8ef62f
+
+	column train_id
+		dataType: string
+		lineageTag: 6a516595-1648-5a52-8f7b-741c4e85f07e
+		summarizeBy: none
+		sourceColumn: train_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column category
+		dataType: string
+		lineageTag: 71353781-79fe-522b-9b4a-1cbf020adc2a
+		summarizeBy: none
+		sourceColumn: category
+
+		annotation SummarizationSetBy = Automatic
+
+	column line
+		dataType: string
+		lineageTag: b47ca3da-dddc-5099-b0dd-49cd5f9acda0
+		summarizeBy: none
+		sourceColumn: line
+
+		annotation SummarizationSetBy = Automatic
+
+	column train_no
+		dataType: string
+		lineageTag: 7489b8fb-b274-57f8-ac8b-175ba6424659
+		summarizeBy: none
+		sourceColumn: train_no
+
+		annotation SummarizationSetBy = Automatic
+
+	column planned_arr
+		dataType: dateTime
+		formatString: dd mmm yyyy hh:nn
+		lineageTag: 767684d1-b252-5f7e-ae7e-87cc99a16331
+		summarizeBy: none
+		sourceColumn: planned_arr
+
+		annotation SummarizationSetBy = Automatic
+
+	column actual_arr
+		dataType: dateTime
+		formatString: dd mmm yyyy hh:nn
+		lineageTag: 83371a21-3903-5d76-8ae8-e2f06b71efff
+		summarizeBy: none
+		sourceColumn: actual_arr
+
+		annotation SummarizationSetBy = Automatic
+
+	column delay_min
+		dataType: int64
+		formatString: 0
+		lineageTag: 1fa3f098-781e-5aa0-ae27-09c1f56c953b
+		summarizeBy: none
+		sourceColumn: delay_min
+
+		annotation SummarizationSetBy = Automatic
+
+	column cancelled
+		dataType: int64
+		formatString: 0
+		lineageTag: 22694cd4-ea0b-52f8-ac58-aa0fabd03fa8
+		summarizeBy: none
+		sourceColumn: cancelled
+
+		annotation SummarizationSetBy = Automatic
+
+	column platform
+		dataType: string
+		lineageTag: b3d574d4-3e84-5450-b18a-27ac5920a04e
+		summarizeBy: none
+		sourceColumn: platform
+
+		annotation SummarizationSetBy = Automatic
+
+	column origin
+		dataType: string
+		lineageTag: 1c3735a8-e2ff-53cd-8cad-05584e4211a6
+		summarizeBy: none
+		sourceColumn: origin
+
+		annotation SummarizationSetBy = Automatic
+
+	column ArrivalTime
+		dataType: dateTime
+		formatString: dd mmm yyyy hh:nn
+		lineageTag: 3c5f458d-be25-5842-9e72-fced688b0417
+		summarizeBy: none
+		sourceColumn: ArrivalTime
+
+		annotation SummarizationSetBy = Automatic
+
+	column ArrivalDate
+		dataType: dateTime
+		formatString: dd mmm yyyy
+		lineageTag: 70b4633a-b8ef-5d9a-92c1-40f7f57f9ad4
+		summarizeBy: none
+		sourceColumn: ArrivalDate
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column Hour
+		dataType: int64
+		formatString: 00
+		lineageTag: dc8cbf3f-ae66-5927-bbc2-d9f5479fc873
+		summarizeBy: none
+		sourceColumn: Hour
+
+		annotation SummarizationSetBy = Automatic
+
+	column station
+		dataType: string
+		lineageTag: 133c9844-e35b-5e44-b278-a6dab3898b75
+		summarizeBy: none
+		sourceColumn: station
+
+		annotation SummarizationSetBy = Automatic
+
+	column Service
+		dataType: string
+		lineageTag: dd74a7b5-44d8-5c0a-948d-0d3dc7b7b645
+		summarizeBy: none
+		sourceColumn: Service
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Delay Bucket'
+		dataType: string
+		lineageTag: 7b2ca6e8-bfa1-5640-b6c8-a85d0599f1ed
+		summarizeBy: none
+		sourceColumn: Delay Bucket
+		sortByColumn: 'Bucket Order'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Bucket Order'
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 4b82c358-87d3-5eaf-b325-4ee65ddcfb08
+		summarizeBy: none
+		sourceColumn: Bucket Order
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Delays = m
+		mode: import
+		source =
+				let
+				    // one row per train arriving at Hamburg Hbf (DB Timetables API, collected every 15 min)
+				    Source = Csv.Document(File.Contents("C:\Users\emira\Projects\GitHub-Projects\HamburgTrainDelays\hamburg_delays.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Headers = Table.PromoteHeaders(Source, [PromoteAllScalars = true]),
+				    Blanks = Table.TransformColumns(Headers, {}, each if _ = "" then null else _),
+				    Typed = Table.TransformColumnTypes(Blanks, {
+				        {"check_time", type datetime}, {"train_id", type text}, {"category", type text},
+				        {"line", type text}, {"train_no", type text}, {"planned_arr", type datetime},
+				        {"actual_arr", type datetime}, {"delay_min", Int64.Type}, {"cancelled", Int64.Type},
+				        {"platform", type text}, {"origin", type text}, {"source", type text}, {"station", type text}}, "en-US"),
+				    Arrival = Table.AddColumn(Typed, "ArrivalTime", each if [planned_arr] <> null then [planned_arr] else [actual_arr], type datetime),
+				    AddDate = Table.AddColumn(Arrival, "ArrivalDate", each DateTime.Date([ArrivalTime]), type date),
+				    AddHour = Table.AddColumn(AddDate, "Hour", each Time.Hour([ArrivalTime]), Int64.Type),
+				    // 8 Sep 2026 = continuous collection starts; today is always a partial day
+				    Window = Table.SelectRows(AddHour, each [ArrivalDate] <> null and [ArrivalDate] >= #date(2026, 9, 8) and [ArrivalDate] < Date.From(DateTime.LocalNow())),
+				    // below -10 min = timetable change, not an early train
+				    CleanDelay = Table.TransformColumns(Window, {{"delay_min", each if _ <> null and _ < -10 then null else _, Int64.Type}}),
+				    // rows from before 13 Oct 2026 have no station: they all come from the main hall
+				    Station = Table.TransformColumns(CleanDelay, {{"station", each if _ = null then "Hamburg Hbf" else _, type text}}),
+				    Service = Table.AddColumn(Station, "Service", each
+				        if [station] = "Hamburg Hbf (S-Bahn)" or [category] = "S" then "S-Bahn"
+				        else if List.Contains({"ICE", "IC", "EC", "ECE", "RJ", "NJ", "EN", "FLX", "D"}, [category]) then "Long-distance"
+				        else if List.Contains({"RE", "RB", "ME", "NBE", "ERX"}, [category]) or Text.StartsWith(if [line] = null then "" else [line], "R") then "Regional"
+				        else "Other", type text),
+				    Bucket = Table.AddColumn(Service, "Delay Bucket", each
+				        if [delay_min] = null then null
+				        else if [delay_min] <= 0 then "Early / exact"
+				        else if [delay_min] <= 5 then "1–5 min"
+				        else if [delay_min] <= 15 then "6–15 min"
+				        else if [delay_min] <= 30 then "16–30 min"
+				        else if [delay_min] <= 60 then "31–60 min"
+				        else "60+ min", type text),
+				    BucketOrder = Table.AddColumn(Bucket, "Bucket Order", each
+				        if [delay_min] = null then null
+				        else if [delay_min] <= 0 then 1
+				        else if [delay_min] <= 5 then 2
+				        else if [delay_min] <= 15 then 3
+				        else if [delay_min] <= 30 then 4
+				        else if [delay_min] <= 60 then 5
+				        else 6, Int64.Type),
+				    Result = Table.RemoveColumns(BucketOrder, {"check_time", "source"})
+				in
+				    Result
+
+	annotation PBI_ResultType = Table

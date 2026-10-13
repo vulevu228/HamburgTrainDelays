@@ -1,0 +1,253 @@
+table _Measures
+	lineageTag: 72db4542-9136-5801-aad5-a5017e9e0a1e
+
+	measure 'Trains' = COUNTROWS('Delays')
+		formatString: #,##0
+		displayFolder: 1 Base
+		lineageTag: f3671afb-8062-5931-a1e2-4d9f97464998
+
+	measure 'Trains Timed' =
+			// arrivals with a known delay (cancelled trains have none)
+			COUNT('Delays'[delay_min])
+		formatString: #,##0
+		displayFolder: 1 Base
+		lineageTag: 330d43aa-187d-5eec-a3bf-340bdf66b568
+
+	measure 'Avg Delay' = AVERAGE('Delays'[delay_min])
+		formatString: 0.0
+		displayFolder: 1 Base
+		lineageTag: 25a16cc6-2eef-5c06-b1ff-23b9d93d566f
+
+	measure 'Median Delay' = MEDIAN('Delays'[delay_min])
+		formatString: 0
+		displayFolder: 1 Base
+		lineageTag: f22475e3-62e9-5794-95bb-aaffbffe2ee0
+
+	measure 'On-time Trains' =
+			// Deutsche Bahn: on time = less than 6 min late
+			CALCULATE([Trains Timed], 'Delays'[delay_min] < 6)
+		formatString: #,##0
+		displayFolder: 1 Base
+		lineageTag: 0859c92d-b4dd-55d4-9bf0-c30d4f0b167c
+
+	measure 'Punctuality %' = DIVIDE([On-time Trains], [Trains Timed])
+		formatString: 0.0%
+		displayFolder: 1 Base
+		lineageTag: f63ba673-cbf3-50f4-a45e-a645d6cede9f
+
+	measure 'Cancelled' = CALCULATE([Trains], 'Delays'[cancelled] = 1)
+		formatString: #,##0
+		displayFolder: 1 Base
+		lineageTag: 9c8deb9f-10b8-586e-b800-7b719bf27872
+
+	measure 'Cancel Rate' = DIVIDE([Cancelled], [Trains])
+		formatString: 0.0%
+		displayFolder: 1 Base
+		lineageTag: eb7f6df9-306c-5ff0-af02-c4d8bcdda132
+
+	measure 'Share of Timed' =
+			// share of timed arrivals in this delay bucket (sums to 100% per weekday on the When page)
+			DIVIDE([Trains Timed], CALCULATE([Trains Timed], REMOVEFILTERS('Delays'[Delay Bucket], 'Delays'[Bucket Order])))
+		formatString: 0.0%
+		displayFolder: 1 Base
+		lineageTag: 4e7927b4-ba7a-55a1-b566-f4ec320f7c71
+
+	measure 'Punctuality 7d' =
+			VAR EndDate = MAX('Calendar'[Date])
+			RETURN CALCULATE([Punctuality %], DATESINPERIOD('Calendar'[Date], EndDate, -7, DAY))
+		formatString: 0.0%
+		displayFolder: 2 Trend
+		lineageTag: 6f3f4161-9af2-5298-9e35-d567ccbb52dc
+
+	measure 'Period Punctuality' = CALCULATE([Punctuality %], ALLSELECTED('Calendar'))
+		formatString: 0.0%
+		displayFolder: 2 Trend
+		lineageTag: 43e4f517-22cf-5945-956a-d93bf7c98b0a
+
+	measure 'Last Data Date' =
+			// end of the selected date range; the Service slicer must not move it
+			CALCULATE(MAX('Delays'[ArrivalDate]), REMOVEFILTERS('Delays'[Service]))
+		formatString: dd mmm yyyy
+		displayFolder: 3 Last 7 days
+		lineageTag: 1622496d-293a-5fcf-a74d-4beb2318fbf9
+
+	measure 'Punctuality L7' = CALCULATE([Punctuality %], DATESINPERIOD('Calendar'[Date], [Last Data Date], -7, DAY))
+		formatString: 0.0%
+		displayFolder: 3 Last 7 days
+		lineageTag: 7717075f-6e15-5323-8572-c1e671fb55d7
+
+	measure 'Punctuality P7' = CALCULATE([Punctuality %], DATESINPERIOD('Calendar'[Date], [Last Data Date] - 7, -7, DAY))
+		formatString: 0.0%
+		displayFolder: 3 Last 7 days
+		lineageTag: 2babf698-4f56-571b-8c75-c05b5d805aaa
+
+	measure 'Avg Delay L7' = CALCULATE([Avg Delay], DATESINPERIOD('Calendar'[Date], [Last Data Date], -7, DAY))
+		formatString: 0.0
+		displayFolder: 3 Last 7 days
+		lineageTag: 86059ac3-9a39-54dc-a90d-2b0e0e8fb017
+
+	measure 'Avg Delay P7' = CALCULATE([Avg Delay], DATESINPERIOD('Calendar'[Date], [Last Data Date] - 7, -7, DAY))
+		formatString: 0.0
+		displayFolder: 3 Last 7 days
+		lineageTag: f7a78a19-7006-5ca9-91ec-8e3712f23936
+
+	measure 'Cancel Rate L7' = CALCULATE([Cancel Rate], DATESINPERIOD('Calendar'[Date], [Last Data Date], -7, DAY))
+		formatString: 0.0%
+		displayFolder: 3 Last 7 days
+		lineageTag: 817e6cea-81f1-53b0-bd83-aa8119ecea5b
+
+	measure 'Cancel Rate P7' = CALCULATE([Cancel Rate], DATESINPERIOD('Calendar'[Date], [Last Data Date] - 7, -7, DAY))
+		formatString: 0.0%
+		displayFolder: 3 Last 7 days
+		lineageTag: ba2af134-8e35-5fe7-97b9-2afc4bb476f0
+
+	measure 'Trains L7' = CALCULATE([Trains], DATESINPERIOD('Calendar'[Date], [Last Data Date], -7, DAY))
+		formatString: #,##0
+		displayFolder: 3 Last 7 days
+		lineageTag: eb3abba1-5c77-5226-997c-2badfb8926d0
+
+	measure 'Trains P7' = CALCULATE([Trains], DATESINPERIOD('Calendar'[Date], [Last Data Date] - 7, -7, DAY))
+		formatString: #,##0
+		displayFolder: 3 Last 7 days
+		lineageTag: d154b77c-07fb-588f-b814-839ac75e760f
+
+	measure 'Punctuality Label' =
+			VAR Cur = [Punctuality L7]
+			VAR Prev = [Punctuality P7]
+			VAR D = (Cur - Prev) * 100
+			RETURN IF(ISBLANK(Cur) || ISBLANK(Prev), "Last 7 days: no comparison",
+			    "Last 7 days " & SUBSTITUTE(FORMAT(Cur, "0.0%", "en-GB"), ",", UNICHAR(8239)) & "  ·  " & IF(D >= 0, "▲ ", "▼ ") & FORMAT(ABS(D), "0.0", "en-GB") & " pts")
+		displayFolder: 4 KPI labels
+		lineageTag: 51ef34d4-12c0-52fc-baec-0058d35736a7
+
+	measure 'Punctuality Color' = IF(ISBLANK([Punctuality L7]) || ISBLANK([Punctuality P7]), "#9DB0C4", IF([Punctuality L7] >= [Punctuality P7], "#3DBE8B", "#E8604C"))
+		displayFolder: 4 KPI labels
+		lineageTag: 84abd19c-f304-5c8b-9631-6552ca6c4c40
+
+	measure 'Avg Delay Label' =
+			VAR Cur = [Avg Delay L7]
+			VAR Prev = [Avg Delay P7]
+			VAR D = Cur - Prev
+			RETURN IF(ISBLANK(Cur) || ISBLANK(Prev), "Last 7 days: no comparison",
+			    "Last 7 days " & SUBSTITUTE(FORMAT(Cur, "0.0", "en-GB"), ",", UNICHAR(8239)) & "  ·  " & IF(D >= 0, "▲ ", "▼ ") & FORMAT(ABS(D), "0.0", "en-GB") & " min")
+		displayFolder: 4 KPI labels
+		lineageTag: cb654e32-aed1-5e5b-9a79-1e676dbe9761
+
+	measure 'Avg Delay Color' = IF(ISBLANK([Avg Delay L7]) || ISBLANK([Avg Delay P7]), "#9DB0C4", IF([Avg Delay L7] <= [Avg Delay P7], "#3DBE8B", "#E8604C"))
+		displayFolder: 4 KPI labels
+		lineageTag: 340b1bee-0b46-5175-aa7e-f2f151c95852
+
+	measure 'Cancel Label' =
+			VAR Cur = [Cancel Rate L7]
+			VAR Prev = [Cancel Rate P7]
+			VAR D = (Cur - Prev) * 100
+			RETURN IF(ISBLANK(Cur) || ISBLANK(Prev), "Last 7 days: no comparison",
+			    "Last 7 days " & SUBSTITUTE(FORMAT(Cur, "0.0%", "en-GB"), ",", UNICHAR(8239)) & "  ·  " & IF(D >= 0, "▲ ", "▼ ") & FORMAT(ABS(D), "0.0", "en-GB") & " pts")
+		displayFolder: 4 KPI labels
+		lineageTag: c33e0bb8-6837-542c-b78f-68b1c421e75f
+
+	measure 'Cancel Color' = IF(ISBLANK([Cancel Rate L7]) || ISBLANK([Cancel Rate P7]), "#9DB0C4", IF([Cancel Rate L7] <= [Cancel Rate P7], "#3DBE8B", "#E8604C"))
+		displayFolder: 4 KPI labels
+		lineageTag: a4a80d20-eda8-5423-b3e9-739d2ae4f42e
+
+	measure 'Trains Text' = SUBSTITUTE(FORMAT([Trains], "#,##0", "en-GB"), ",", UNICHAR(8239))
+		displayFolder: 4 KPI labels
+		lineageTag: a4484ed9-3f77-5aae-b882-0eaaa4fdd9c3
+
+	measure 'Trains Label' =
+			VAR Cur = [Trains L7]
+			VAR Prev = [Trains P7]
+			VAR D = DIVIDE(Cur, Prev) - 1
+			RETURN IF(ISBLANK(Cur) || ISBLANK(Prev), "Last 7 days: no comparison",
+			    "Last 7 days " & SUBSTITUTE(FORMAT(Cur, "#,##0", "en-GB"), ",", UNICHAR(8239)) & "  ·  " & IF(D >= 0, "▲ ", "▼ ") & FORMAT(ABS(D), "0.0%", "en-GB") & "")
+		displayFolder: 4 KPI labels
+		lineageTag: 1c28289e-0109-5842-8907-2c049f0b06a5
+
+	measure 'Delay Color' =
+			// bar color by average delay: under 6 min good, under 10 amber, else bad
+			VAR D = [Avg Delay]
+			RETURN SWITCH(TRUE(), ISBLANK(D), "#7F95AC", D < 6, "#3DBE8B", D < 10, "#F5B83D", "#E8604C")
+		displayFolder: 5 Charts
+		lineageTag: ba188b8e-0388-529a-ae49-edb12a622505
+
+	measure 'Bucket Color' =
+			SWITCH(SELECTEDVALUE('Delays'[Bucket Order]),
+			    1, "#3DBE8B",
+			    2, "#8FCB6A",
+			    3, "#F5B83D",
+			    4, "#F08A3C",
+			    5, "#E8604C",
+			    6, "#B83A55",
+			    "#7F95AC")
+		displayFolder: 5 Charts
+		lineageTag: 895aa706-1826-5f3c-bfca-3fdcfdecf9bf
+
+	measure 'Weekday Color' =
+			VAR Worst = MAXX(ALLSELECTED('Calendar'[Weekday], 'Calendar'[Weekday No]), [Avg Delay])
+			RETURN IF([Avg Delay] = Worst, "#E8604C", "#F5B83D")
+		displayFolder: 5 Charts
+		lineageTag: 4c494a32-cddd-5392-b316-5ea0f00a3d04
+
+	measure 'Line Avg Delay' =
+			// regional lines with 150+ timed arrivals; blank line = no bar
+			VAR L = SELECTEDVALUE('Delays'[line])
+			RETURN IF(NOT ISBLANK(L) && LEFT(L, 1) = "R" && [Trains Timed] >= 150, [Avg Delay])
+		formatString: 0.0
+		displayFolder: 5 Charts
+		lineageTag: 3674dbda-7924-515e-b5a2-fc5019279423
+
+	measure 'Line Cancel Rate' =
+			VAR L = SELECTEDVALUE('Delays'[line])
+			RETURN IF(NOT ISBLANK(L) && LEFT(L, 1) = "R" && [Trains] >= 300, [Cancel Rate])
+		formatString: 0.0%
+		displayFolder: 5 Charts
+		lineageTag: 8740d0c2-6e97-5712-bc4a-b8be780f332a
+
+	measure 'Category Avg Delay' =
+			VAR C = SELECTEDVALUE('Delays'[category])
+			RETURN IF(NOT ISBLANK(C) && [Trains Timed] >= 90, [Avg Delay])
+		formatString: 0.0
+		displayFolder: 5 Charts
+		lineageTag: ed47409c-4f5d-573f-b1af-31602cba40c0
+
+	measure 'Origin Avg Delay' =
+			// the 10 start stations with the latest trains (150+ timed arrivals)
+			VAR O = SELECTEDVALUE('Delays'[origin])
+			VAR Pool = FILTER(ALLSELECTED('Delays'[origin]), NOT ISBLANK('Delays'[origin]) && [Trains Timed] >= 150)
+			VAR R = RANKX(Pool, [Avg Delay], , DESC)
+			RETURN IF(NOT ISBLANK(O) && [Trains Timed] >= 150 && R <= 10, [Avg Delay])
+		formatString: 0.0
+		displayFolder: 5 Charts
+		lineageTag: 364c8a7a-3fdf-5d9f-98dc-f0df521b8a35
+
+	measure 'Hour Avg Delay' =
+			// hours with under 100 timed arrivals (night) are hidden
+			IF([Trains Timed] >= 100, [Avg Delay])
+		formatString: 0.0
+		displayFolder: 5 Charts
+		lineageTag: 663d8a75-1214-5337-9a0c-bf415751a5d1
+
+	measure 'Data Note' = "Source: Deutsche Bahn Timetables API, Hamburg Hbf (S-Bahn platforms from 13 Oct), polled every 15 min · " & FORMAT(MIN('Calendar'[Date]), "d mmm") & " – " & FORMAT(MAX('Calendar'[Date]), "d mmm yyyy") & " · " & SUBSTITUTE(FORMAT([Trains], "#,##0", "en-GB"), ",", UNICHAR(8239)) & " arrivals · On time = under 6 min late · " & "Cancelled trains count only in the cancellation rate"
+		displayFolder: 5 Charts
+		lineageTag: a6899c1f-719f-56e8-b873-f44fc30af68b
+
+	column Value
+		isHidden
+		dataType: int64
+		formatString: 0
+		lineageTag: 74161b47-ad8e-5d9a-a79d-b6e97f9d7551
+		summarizeBy: none
+		sourceColumn: Value
+
+		annotation SummarizationSetBy = Automatic
+
+	partition _Measures = m
+		mode: import
+		source =
+				let
+				  Source = #table({"Value"}, {{0}}),
+				  #"Changed Type" = Table.TransformColumnTypes(Source, {{"Value", Int64.Type}})
+				in
+				  #"Changed Type"
+
+	annotation PBI_ResultType = Table

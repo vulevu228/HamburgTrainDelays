@@ -1,0 +1,4 @@
+relationship 1c9517a5-f2bc-5f3e-8f0d-05b1ecc192b1
+	fromColumn: Delays.ArrivalDate
+	toColumn: Calendar.Date
+

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "hamburg_delays"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "bb711f5f-7e7a-4d41-b84c-9d1cbb71ce2f"
+  }
+}

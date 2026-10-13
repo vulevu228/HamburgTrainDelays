@@ -1,0 +1,21 @@
+model Model
+	culture: en-GB
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-GB
+	valueFilterBehavior: independent
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation __PBI_TimeIntelligenceEnabled = 0
+
+annotation PBI_QueryOrder = ["Delays","Calendar","_Measures"]
+
+annotation PBI_ProTooling = ["DevMode"]
+
+ref table Delays
+ref table Calendar
+ref table _Measures
+
+ref cultureInfo en-GB
+
