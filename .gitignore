@@ -9,3 +9,6 @@ images/chart_preview.png
 **/.pbi/cache.abf
 **/.pbi/localSettings.json
 **/.pbi/editorSettings.json
+
+# --- Excel capstone workbook (the only xlsx that is committed) ---
+!excel/*.xlsx

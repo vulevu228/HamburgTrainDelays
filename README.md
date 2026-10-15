@@ -25,6 +25,22 @@ Data window: 8 Sep – 12 Oct 2026, 16,799 arrivals (before the S-Bahn was added
 ![Delays by hour and weekday](images/dashboard-4-when.png)
 *When: delays build up from early afternoon until midnight; Friday is the worst day (12.6 min).*
 
+## 📗 Excel version
+The same data rebuilt in Excel ([`excel/Hamburg_Delays_Capstone.xlsx`](excel/Hamburg_Delays_Capstone.xlsx)):
+16,515 Hbf + S-Bahn arrivals from 8 Sep – 13 Oct 2026, a snapshot of `hamburg_delays.csv`.
+
+![Excel dashboard: KPI cards, daily and hourly punctuality, worst lines, slicers](images/excel-dashboard.png)
+*58.4% of arrivals on time, but only 54.8% in the last 7 days (−4.8 pp vs the week before). FlixTrain FLX 10 is the most delayed line (25.5 min on average).*
+
+* **Calculated table columns:** date/hour/weekday, a "late" flag following DB's 6-minute rule, delay bands, service type
+* **Dynamic arrays:** `LET`, `FILTER`, `SORT`/`SORTBY`, `UNIQUE`, `TAKE`, `HSTACK`, `SEQUENCE`, `XLOOKUP`
+  for KPIs, group tables and Top-N lists
+* **Interactive line report:** a dropdown picks a line and every figure for that line updates
+* **PivotTables:** sharing one slicer set (service, station) and a date timeline
+* **Dashboard sheet:** KPI cards linked to the formulas, plus formula charts and PivotCharts
+
+Each task sheet checks its answers against a hidden answer key, because the workbook doubled as an Excel training project.
+
 ### 🗺️ Roadmap
 * **S-Bahn** – collecting since 13 Oct 2026 (station `Hamburg Hbf (S-Bahn)`, EVA 8098549).
 * **U-Bahn** – access to the HOCHBAHN / hvv GTI interface has been requested.
@@ -38,6 +54,7 @@ Data window: 8 Sep – 12 Oct 2026, 16,799 arrivals (before the S-Bahn was added
 * **GitHub Actions + PowerShell/Task Scheduler:** Run the collector every 15 min and push the CSV.
 * **Power BI (Power Query, DAX):** Four-page report with a date table, 37 measures and
   "last 7 days vs the 7 before" comparisons on every KPI.
+* **Excel (dynamic arrays, PivotTables, slicers):** The same analysis as a formula-driven workbook with a dashboard sheet.
 
 ---
 
