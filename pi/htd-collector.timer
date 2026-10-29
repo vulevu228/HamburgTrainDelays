@@ -1,0 +1,9 @@
+[Unit]
+Description=HamburgTrainDelays collector every 15 min (offset from the 5-min Sky & Sea runs)
+
+[Timer]
+OnCalendar=*:02/15
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

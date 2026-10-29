@@ -3,11 +3,15 @@
 > **A self-running data pipeline and Power BI dashboard on train punctuality at Hamburg Hauptbahnhof.**
 
 ## 📊 Project Overview
-Every 15 minutes a scheduled job polls the Deutsche Bahn Timetables API for
+Every 15 minutes my own collector on a Raspberry Pi polls the Deutsche Bahn Timetables API for
 Hamburg Hbf (main hall: long-distance + regional trains) and, since 13 Oct 2026,
 the underground S-Bahn platforms (S1/S3/S5/S7). It joins the **planned timetable**
 against the **live change feed** and upserts one row per train into a growing
 dataset (`hamburg_delays.csv`), which feeds a four-page Power BI report.
+
+> **Data collection: my own Raspberry Pi.** Since 28 Oct 2026 the data is extracted by my own
+> collector running 24/7 on a Raspberry Pi 4 at home (systemd timer, `pi/`). It polls the official
+> DB API and commits the dataset to this repo; GitHub Actions stays on as a backup.
 
 ## 📈 Dashboard
 Data window: 8 Sep – 12 Oct 2026, 16,799 arrivals (before the S-Bahn was added).
@@ -51,7 +55,8 @@ Each task sheet checks its answers against a hidden answer key, because the work
 * **Python + `requests`:** Polls two Timetables API endpoints and merges them.
 * **pandas:** Parses the API's timestamp format, computes delays, de-duplicates.
 * **matplotlib:** Quick hourly delay chart from `scripts/analyze_delays.py` (not committed).
-* **GitHub Actions + PowerShell/Task Scheduler:** Run the collector every 15 min and push the CSV.
+* **Raspberry Pi 4 (systemd) + GitHub Actions:** Run the collector every 15 min and push the CSV
+  (the Pi is the main runner since 28 Oct 2026; before that a Windows Task Scheduler job on my laptop).
 * **Power BI (Power Query, DAX):** Four-page report with a date table, 37 measures and
   "last 7 days vs the 7 before" comparisons on every KPI.
 * **Excel (dynamic arrays, PivotTables, slicers):** The same analysis as a formula-driven workbook with a dashboard sheet.
@@ -157,8 +162,8 @@ python scripts/clean_merge.py
 
 ### Run it on a schedule
 
-Two options — running **both** is fine (each run re-syncs from `origin` before
-pushing, so they can't conflict), but one is usually enough.
+Three options — running more than one is fine (each run re-syncs from `origin` before
+pushing, so they can't conflict). Mine: **C** as the main runner, **A** as a backup.
 
 **A. GitHub Actions (cloud, works with your machine off)** — `.github/workflows/hamburg_delays.yml`
 Runs `*/15 * * * *` (GitHub throttles cron, so realistically every 15–40 min).
@@ -173,3 +178,14 @@ powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1
 ```
 `collect_and_push.ps1` runs the collector, then commits and pushes
 `hamburg_delays.csv` only when it changed. Activity is logged to `collector.log`.
+
+**C. Raspberry Pi / any Linux box (24/7, what I use)** — `pi/`
+```bash
+# shallow clone + venv, then:
+cp pi/htd_collect_and_push.sh ~/bin/ && chmod +x ~/bin/htd_collect_and_push.sh
+sudo cp pi/htd-collector.service pi/htd-collector.timer /etc/systemd/system/
+sudo systemctl enable --now htd-collector.timer      # every 15 min at :02, :17, :32, :47
+```
+`htd_collect_and_push.sh` is the bash port of `collect_and_push.ps1` (same reset → collect →
+commit → push → retry cycle) and pushes with a deploy key that can write to this repo only.
+`NO_PUSH=1` collects without pushing (test mode). Activity is logged to `~/hamburg-delays-collector.log`.

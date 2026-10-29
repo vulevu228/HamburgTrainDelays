@@ -1,0 +1,11 @@
+[Unit]
+Description=HamburgTrainDelays: DB Timetables -> hamburg_delays.csv -> push to GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=emir
+ExecStart=/home/emir/bin/htd_collect_and_push.sh
+TimeoutStartSec=8min
+Nice=10
