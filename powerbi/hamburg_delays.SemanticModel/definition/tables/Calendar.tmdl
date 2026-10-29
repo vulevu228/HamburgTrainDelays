@@ -59,3 +59,4 @@ table Calendar
 				    #"Added Week Start"
 
 	annotation PBI_ResultType = Table
+

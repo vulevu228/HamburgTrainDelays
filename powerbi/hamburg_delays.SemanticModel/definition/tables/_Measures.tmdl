@@ -1,7 +1,7 @@
 table _Measures
 	lineageTag: 72db4542-9136-5801-aad5-a5017e9e0a1e
 
-	measure 'Trains' = COUNTROWS('Delays')
+	measure Trains = COUNTROWS('Delays')
 		formatString: #,##0
 		displayFolder: 1 Base
 		lineageTag: f3671afb-8062-5931-a1e2-4d9f97464998
@@ -35,7 +35,7 @@ table _Measures
 		displayFolder: 1 Base
 		lineageTag: f63ba673-cbf3-50f4-a45e-a645d6cede9f
 
-	measure 'Cancelled' = CALCULATE([Trains], 'Delays'[cancelled] = 1)
+	measure Cancelled = CALCULATE([Trains], 'Delays'[cancelled] = 1)
 		formatString: #,##0
 		displayFolder: 1 Base
 		lineageTag: 9c8deb9f-10b8-586e-b800-7b719bf27872
@@ -232,8 +232,8 @@ table _Measures
 		lineageTag: a6899c1f-719f-56e8-b873-f44fc30af68b
 
 	column Value
-		isHidden
 		dataType: int64
+		isHidden
 		formatString: 0
 		lineageTag: 74161b47-ad8e-5d9a-a79d-b6e97f9d7551
 		summarizeBy: none
@@ -251,3 +251,4 @@ table _Measures
 				  #"Changed Type"
 
 	annotation PBI_ResultType = Table
+
