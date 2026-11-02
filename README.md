@@ -47,7 +47,7 @@ Each task sheet checks its answers against a hidden answer key, because the work
 
 ### 🗺️ Roadmap
 * **S-Bahn** – collecting since 13 Oct 2026 (station `Hamburg Hbf (S-Bahn)`, EVA 8098549).
-* **U-Bahn** – access to the HOCHBAHN / hvv GTI interface has been requested.
+* **U-Bahn** – collecting since 30 Oct 2026 through the HOCHBAHN / hvv GTI interface, with hvv's OK, on the same Raspberry Pi. That data stays private and separate from this repo; only aggregated results get published (source: [hvv.de](https://www.hvv.de), ohne Gewähr).
 
 ---
 
