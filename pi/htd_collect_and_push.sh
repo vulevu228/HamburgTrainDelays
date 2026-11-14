@@ -7,6 +7,9 @@
 cd ~/hamburg-delays
 LOG=~/hamburg-delays-collector.log
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S')  $*" >> "$LOG"; }
+# Every shallow fetch+reset orphans the previous ~10 MB CSV blob as a loose object (~1 GB/week);
+# prune them on every exit so .git stays small.
+trap 'git reflog expire --expire=now --all; git gc -q --prune=now' EXIT
 PY=~/venvs/collectors/bin/python
 for attempt in 1 2 3 4 5; do
     git fetch -q --depth 1 origin main && git reset -q --hard origin/main
